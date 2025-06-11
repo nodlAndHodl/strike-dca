@@ -69,13 +69,13 @@ async function executeDca(): Promise<void> {
 
     console.log(`Created exchange quote:`, {
       quoteId: quote.id,
-      rate: quote.rate,
-      sourceAmount: quote.sourceAmount.amount,
-      targetAmount: quote.targetAmount.amount
+      rate: quote.conversionRate?.amount,
+      sourceAmount: quote.source?.amount,
+      targetAmount: quote.target?.amount
     });
 
-    const result = await strikeClient.executeCurrencyExchange(quote.id);
-    console.log('DCA execution successful:', result);
+    await strikeClient.executeCurrencyExchange(quote.id);
+    console.log('DCA execution successful!');
     
   } catch (error) {
     console.error('Error executing DCA:', error);

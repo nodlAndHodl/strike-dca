@@ -1,5 +1,5 @@
 // src/strikeClient.ts
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosError, AxiosInstance } from 'axios';
 
 export class StrikeClient {
   private client: AxiosInstance;
@@ -34,26 +34,45 @@ export class StrikeClient {
     targetCurrency: string,
     amount: number
   ) {
+    console.log(`Creating currency exchange quote for ${amount} ${sourceCurrency} to ${targetCurrency}`);
+    const requestBody = {
+      sell: sourceCurrency,
+      buy: targetCurrency,
+      amount: {
+        amount: amount.toFixed(2),
+        currency: sourceCurrency
+      }
+    };
     try {
-      const response = await this.client.post('/currency-exchange-quotes', {
-        sourceCurrency,
-        targetCurrency,
-        amount: amount.toString()
-      });
+      const response = await this.client.post('/currency-exchange-quotes', requestBody);
+      console.log('Currency exchange quote response:', response.data);
       return response.data;
     } catch (error) {
-      console.error('Error creating currency exchange quote:', error);
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as AxiosError;
+        console.error('Error creating currency exchange quote:', axiosError.response?.data || error);
+      } else {
+        console.error('Error creating currency exchange quote:', error);
+      }
       throw error;
     }
   }
 
-  async executeCurrencyExchange(quoteId: string) {
+  /**
+   * Executes a currency exchange quote by ID. Per Strike API, returns 202 Accepted and no body.
+   */
+  async executeCurrencyExchange(quoteId: string): Promise<void> {
     try {
       const response = await this.client.patch(
         `/currency-exchange-quotes/${quoteId}/execute`,
         {}
       );
-      return response.data;
+      if (response.status === 202) {
+        console.log('Currency exchange execution accepted (202).');
+      } else {
+        console.warn(`Unexpected status executing currency exchange: ${response.status}`);
+      }
+      // No body returned per API docs
     } catch (error) {
       console.error('Error executing currency exchange:', error);
       throw error;
