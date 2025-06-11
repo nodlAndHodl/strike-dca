@@ -8,7 +8,7 @@ dotenv.config();
 
 interface Config {
   apiKey: string;
-  dcaAmount: number;
+  dcaAmount?: number; // Optional
   dcaFrequency: string;
   sourceCurrency: string;
   targetCurrency: string;
@@ -17,7 +17,7 @@ interface Config {
 
 const config: Config = {
   apiKey: process.env.STRIKE_API_KEY || '',
-  dcaAmount: parseFloat(process.env.DCA_AMOUNT || '100'),
+  dcaAmount: process.env.DCA_AMOUNT ? parseFloat(process.env.DCA_AMOUNT) : undefined,
   dcaFrequency: process.env.DCA_FREQUENCY || '0 0 * * 1', // Every Monday at midnight
   sourceCurrency: process.env.SOURCE_CURRENCY || 'USD',
   targetCurrency: process.env.TARGET_CURRENCY || 'BTC',
@@ -54,8 +54,23 @@ async function executeDca(): Promise<void> {
     const balances = await strikeClient.getAccountBalances();
     const sourceBalance = balances.find((b: any) => b.currency === config.sourceCurrency);
     
-    if (!sourceBalance || parseFloat(sourceBalance.available) < config.dcaAmount) {
-      throw new Error(`Insufficient ${config.sourceCurrency} balance for DCA`);
+    const available = sourceBalance ? parseFloat(sourceBalance.available) : 0;
+    if (available === 0) {
+      console.log(`No available ${config.sourceCurrency} balance. Skipping DCA execution.`);
+      return;
+    }
+    let amountToExchange: number;
+    if (typeof config.dcaAmount === 'number' && !isNaN(config.dcaAmount)) {
+      if (available < config.dcaAmount) {
+        amountToExchange = available;
+        console.log(`Available ${config.sourceCurrency} (${available}) is less than DCA_AMOUNT (${config.dcaAmount}). Exchanging entire available balance.`);
+      } else {
+        amountToExchange = config.dcaAmount;
+        console.log(`Using fixed DCA amount: ${amountToExchange} ${config.sourceCurrency}`);
+      }
+    } else {
+      amountToExchange = available;
+      console.log(`No DCA_AMOUNT set; using entire available balance: ${amountToExchange} ${config.sourceCurrency}`);
     }
 
     console.log(`Current ${config.sourceCurrency} balance:`, sourceBalance.available);
@@ -64,7 +79,7 @@ async function executeDca(): Promise<void> {
     const quote = await strikeClient.createCurrencyExchangeQuote(
       config.sourceCurrency,
       config.targetCurrency,
-      config.dcaAmount
+      amountToExchange
     );
 
     console.log(`Created exchange quote:`, {
