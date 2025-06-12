@@ -27,6 +27,7 @@ export async function fetchMarketChart(
       interval: 'daily',
     },
   });
+  console.debug('Market chart response successfully fetched.');
   return response.data;
 }
 
@@ -42,6 +43,7 @@ export function calculateSMA(prices: [number, number][], window: number): number
     const sum = windowSlice.reduce((acc, [, price]) => acc + price, 0);
     sma.push(sum / window);
   }
+  
   return sma;
 }
 
