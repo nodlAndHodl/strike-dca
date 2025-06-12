@@ -13,6 +13,7 @@ interface Config {
   sourceCurrency: string;
   targetCurrency: string;
   environment: 'sandbox' | 'production';
+  dcaBuyDays?: string[]; // Optional: days allowed for DCA
 }
 
 const config: Config = {
@@ -21,7 +22,8 @@ const config: Config = {
   dcaFrequency: process.env.DCA_FREQUENCY || '0 0 * * 1', // Every Monday at midnight
   sourceCurrency: process.env.SOURCE_CURRENCY || 'USD',
   targetCurrency: process.env.TARGET_CURRENCY || 'BTC',
-  environment: (process.env.STRIKE_ENVIRONMENT as 'sandbox' | 'production') || 'sandbox'
+  environment: (process.env.STRIKE_ENVIRONMENT as 'sandbox' | 'production') || 'sandbox',
+  dcaBuyDays: process.env.DCA_BUY_DAYS ? process.env.DCA_BUY_DAYS.split(',').map(day => day.trim().toUpperCase()) : undefined
 };
 
 const app = express();
@@ -48,6 +50,16 @@ app.get('/balances', async (req, res) => {
 // Execute DCA
 async function executeDca(): Promise<void> {
   try {
+    // Check if today is an allowed DCA day
+    if (config.dcaBuyDays && config.dcaBuyDays.length > 0) {
+      const today = new Date();
+      const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+      const todayName = dayNames[today.getDay()];
+      if (!config.dcaBuyDays.includes(todayName)) {
+        console.log(`Today (${todayName}) is not in DCA_BUY_DAYS (${config.dcaBuyDays.join(', ')}). Skipping DCA execution.`);
+        return;
+      }
+    }
     console.log('Starting DCA execution...');
     
     // Check current balance
