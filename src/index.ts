@@ -6,6 +6,8 @@ import { StrikeClient } from './strikeClient';
 
 dotenv.config();
 
+import { getBuyLevelMultiplier, BuyLevelConfig } from './buyLevelCalculator';
+
 interface Config {
   apiKey: string;
   dcaAmount?: number; // Optional
@@ -14,6 +16,9 @@ interface Config {
   targetCurrency: string;
   environment: 'sandbox' | 'production';
   dcaBuyDays?: string[]; // Optional: days allowed for DCA
+  overboughtMultiplier?: number;
+  oversoldMultiplier?: number;
+  neutralMultiplier?: number;
 }
 
 const config: Config = {
@@ -23,7 +28,10 @@ const config: Config = {
   sourceCurrency: process.env.SOURCE_CURRENCY || 'USD',
   targetCurrency: process.env.TARGET_CURRENCY || 'BTC',
   environment: (process.env.STRIKE_ENVIRONMENT as 'sandbox' | 'production') || 'sandbox',
-  dcaBuyDays: process.env.DCA_BUY_DAYS ? process.env.DCA_BUY_DAYS.split(',').map(day => day.trim().toUpperCase()) : undefined
+  dcaBuyDays: process.env.DCA_BUY_DAYS ? process.env.DCA_BUY_DAYS.split(',').map(day => day.trim().toUpperCase()) : undefined,
+  overboughtMultiplier: process.env.OVERBOUGHT_MULTIPLIER ? parseFloat(process.env.OVERBOUGHT_MULTIPLIER) : undefined,
+  oversoldMultiplier: process.env.OVERSOLD_MULTIPLIER ? parseFloat(process.env.OVERSOLD_MULTIPLIER) : undefined,
+  neutralMultiplier: process.env.NEUTRAL_MULTIPLIER ? parseFloat(process.env.NEUTRAL_MULTIPLIER) : undefined
 };
 
 const app = express();
@@ -85,6 +93,29 @@ async function executeDca(): Promise<void> {
       console.log(`No DCA_AMOUNT set; using entire available balance: ${amountToExchange} ${config.sourceCurrency}`);
     }
 
+    // --- BUY LEVEL LOGIC ---
+    // Fetch recent prices for buy level calculation
+    let buyMultiplier = 1.0;
+    try {
+      const { fetchMarketChart } = await import('./coingeckoClient');
+      const chart = await fetchMarketChart(config.targetCurrency.toLowerCase(), config.sourceCurrency.toLowerCase(), 210);
+      const buyLevelConfig: BuyLevelConfig = {
+        overboughtMultiplier: config.overboughtMultiplier,
+        oversoldMultiplier: config.oversoldMultiplier,
+        neutralMultiplier: config.neutralMultiplier,
+      };
+      buyMultiplier = getBuyLevelMultiplier(chart.prices, buyLevelConfig);
+      console.log(`Buy level multiplier determined: ${buyMultiplier}`);
+    } catch (err) {
+      console.warn('Could not determine buy level multiplier, defaulting to 1.0:', err);
+    }
+    amountToExchange *= buyMultiplier;
+    if (amountToExchange > available) {
+      console.log(`Adjusted amount (${amountToExchange}) exceeds available balance (${available}). Using available balance.`);
+      amountToExchange = available;
+    }
+    console.log(`Adjusted amount to exchange after buy level: ${amountToExchange}`);
+
     console.log(`Current ${config.sourceCurrency} balance:`, sourceBalance.available);
     
     // Create and execute currency exchange
@@ -121,9 +152,7 @@ if (config.apiKey) {
 app.listen(PORT, () => {
   console.log(`DCA Bot running on port ${PORT}`);
   console.log(`Configuration:`, {
-    sourceCurrency: config.sourceCurrency,
-    targetCurrency: config.targetCurrency,
-    dcaAmount: config.dcaAmount,
-    environment: config.environment
+      ...config,
+      apiKey: '***',
   });
 });
